@@ -59,6 +59,7 @@ impl WebFile {
             let data = get_data_from_header(
                 disposition_str.to_str().unwrap()
             );
+            println!("{:?}", data);
             webfile.filename = data.get("filename").unwrap().to_owned();
         }else{
             info!("Get filename from url address");
@@ -82,6 +83,10 @@ impl WebFile {
 
     pub fn get_file_size(&self) -> u64 {
         return self.size;
+    }
+
+    pub fn get_filename(&self) -> String {
+        return self.filename.to_owned();
     }
 }
 
@@ -142,6 +147,7 @@ impl FileChunk {
 
     pub fn download(&mut self) -> Result<&Vec<u8>, Box<dyn std::error::Error>> {
         let mut res = reqwest::blocking::Client::new().get(self.source.as_str())
+            .timeout(std::time::Duration::from_secs(5))
             .header("range", format!("bytes={}-{}", self.download_index, self.download_index + self.size))
             .send()?;
         let mut buf = [0; 1024];

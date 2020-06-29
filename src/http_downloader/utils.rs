@@ -24,7 +24,7 @@ pub fn get_data_from_header(header: &str) -> HashMap<String, String> {
     for key_value in key_values.into_iter() {
         if key_value.find("=").is_some() {
             let key_value_list: Vec<String> = key_value.split('=').map(String::from).collect();
-            values_map.insert((&key_value_list[0]).to_owned(), key_value_list[1].trim2());
+            values_map.insert((&key_value_list[0]).trim().to_owned(), key_value_list[1].trim2());
         }
     }
     return values_map;

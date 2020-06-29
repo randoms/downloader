@@ -28,22 +28,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
         ap.parse_args_or_exit();
     }
     // 下载测试数据
-    let mut file = WebFile::new("http://www.bwbot.org/static/video/obj3.mp4")?;
+    let mut file = WebFile::new("https://github.com/BluewhaleRobot/GalileoSDK/releases/download/1.3.6/GalileoSDK-win-1.3.6.tar.gz")?;
+    // let mut file = WebFile::new("http://www.bwbot.org/static/video/obj3.mp4")?;
     // 文件写入
-    let mut file_writer = FileWriter::new("test.mp4", file.get_file_size());
+    let mut file_writer = FileWriter::new(&file.get_filename(), file.get_file_size());
     // 线程池
-    let mut threadpool = ThreadPool::new(2);
+    let mut threadpool = ThreadPool::new(10);
     file.set_chunk_size(1024 * 1024);
     for f in file.into_iter() {
         let mut f = f.clone();
-        f.set_chunk_size(512 * 1024);
+        f.set_chunk_size(100 * 1024);
         for file_chunk in f.into_iter() {
             // 细分的块
             let tx = file_writer.get_tx();
             let mut file_chunk = file_chunk.clone();
             threadpool.add_task(move || {
-                file_chunk.download().expect("Download block failed");
-                tx.send(file_chunk).expect("Send data to filewriter failed");
+                while let Err(_) = file_chunk.download() {
+                    println!("Download chunk failed, retry...");
+                }
+                tx.send(file_chunk)?;
+                Ok(())
             });
         }
     };

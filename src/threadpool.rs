@@ -1,7 +1,6 @@
 use std::sync::{mpsc, Arc, Mutex};
-use log::{info};
 
-type Task = Box<dyn FnOnce() + Send + 'static>;
+type Task = Box<dyn FnOnce() -> Result<(), Box<dyn std::error::Error>> + Send + 'static>;
 pub struct ThreadPool {
     workers: Vec<Worker>,
 }
@@ -11,19 +10,21 @@ impl ThreadPool {
         let mut threadpool = ThreadPool {
             workers: Vec::with_capacity(num as usize),
         };
-        for _ in 0..num {
+        for i in 0..num {
             threadpool.workers.push(Worker::new());
+            threadpool.workers[i as usize].set_name(&format!("thread: {}", i));
         }
         return threadpool;
     }
 
-    pub fn add_task<F>(&mut self, task: F) where F: FnOnce() + Send + 'static {
+    pub fn add_task<F>(&mut self, task: F) where F: FnOnce() -> Result<(), Box<dyn std::error::Error>> + Send + 'static {
         let free_workers: Vec<&Worker> = self.workers.iter().filter(|w|  WorkerStatus::Free == w.get_worker_status()).collect();
         if free_workers.is_empty() {
             self.workers.sort_by(|a, b| a.get_padding_task().cmp(&b.get_padding_task()));
             self.workers[0].add_task(Box::new(task)).expect("add task failed");
             return;
         }
+        println!("Free Wokers");
         free_workers[0].add_task(Box::new(task)).expect("add task failed");
     }
 }
@@ -35,10 +36,11 @@ enum WorkerStatus {
 }
 struct Worker {
     status: Arc<Mutex<WorkerStatus>>,
-    // rx: mpsc::Receiver<Task>,
     tx: mpsc::Sender<Task>,
     padding_task_count: Arc<Mutex<u64>>,
+    name: String,
 }
+
 
 impl Worker {
     pub fn new() -> Worker {
@@ -48,6 +50,7 @@ impl Worker {
             status: Arc::new(Mutex::new(worker_status)),
             tx: tx,
             padding_task_count: Arc::new(Mutex::new(0)),
+            name: String::new(),
         };
         let status1= Arc::clone(&worker.status);
         let padding_task_count1 = Arc::clone(&worker.padding_task_count);
@@ -57,7 +60,9 @@ impl Worker {
                 *status = WorkerStatus::Working;
             }
             for task in rx {
-                task();
+                if let Err(e) = task() {
+                    println!("Task failed: {}, retry...", e);
+                }
                 {
                     let mut status = status1.lock().unwrap();
                     *status = WorkerStatus::Free;
@@ -69,6 +74,14 @@ impl Worker {
             }
         });
         return worker;
+    }
+
+    pub fn set_name(&mut self, name: &str) {
+        self.name = String::from(name);
+    }
+
+    pub fn get_name(&self) -> String {
+        return self.name.to_owned();
     }
 
     pub fn get_worker_status(&self) -> WorkerStatus {
