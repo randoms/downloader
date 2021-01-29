@@ -1,9 +1,9 @@
 extern crate argparse;
+
 use argparse::{ArgumentParser, Store};
 mod options;
 mod http_downloader;
 mod file_writer;
-mod threadpool;
 
 use options::DownloadOptions;
 use http_downloader::{WebFile};
@@ -13,7 +13,7 @@ use threadpool::ThreadPool;
 fn main() -> Result<(), Box<dyn std::error::Error>>{
     // 初始化命令行参数
     let mut download_options = DownloadOptions::default();
-    { 
+    {
         let mut ap = ArgumentParser::new();
         ap.set_description("Http multithread downloader.");
         ap.refer(&mut download_options.source)
@@ -27,27 +27,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
             "Download thread num");
         ap.parse_args_or_exit();
     }
+    if download_options.source.is_empty() {
+        eprintln!("--source is required to download");
+        std::process::exit(1);
+    }
     // 下载测试数据
-    let mut file = WebFile::new("https://github.com/BluewhaleRobot/GalileoSDK/releases/download/1.3.6/GalileoSDK-win-1.3.6.tar.gz")?;
-    // let mut file = WebFile::new("http://www.bwbot.org/static/video/obj3.mp4")?;
+    let mut file = WebFile::new(&*download_options.source)?;
     // 文件写入
-    let mut file_writer = FileWriter::new(&file.get_filename(), file.get_file_size());
+    let mut download_file_name = file.get_filename();
+    if !download_options.output.is_empty() {
+        download_file_name = download_options.output;
+    }
+    let mut file_writer = FileWriter::new(&download_file_name, file.get_file_size());
     // 线程池
-    let mut threadpool = ThreadPool::new(10);
-    file.set_chunk_size(1024 * 1024);
+    let threadpool = ThreadPool::new(download_options.thread as usize);
+    file.set_chunk_size(10 * 1024 * 1024);
     for f in file.into_iter() {
         let mut f = f.clone();
-        f.set_chunk_size(100 * 1024);
+        f.set_chunk_size(1024 * 1024);
         for file_chunk in f.into_iter() {
             // 细分的块
             let tx = file_writer.get_tx();
             let mut file_chunk = file_chunk.clone();
-            threadpool.add_task(move || {
-                while let Err(_) = file_chunk.download() {
-                    println!("Download chunk failed, retry...");
+            threadpool.execute(move || {
+                while let Err(e) = file_chunk.download() {
+                    println!("Download chunk failed, retry... {}", e);
                 }
-                tx.send(file_chunk)?;
-                Ok(())
+                tx.send(file_chunk).expect("send data filed");
             });
         }
     };

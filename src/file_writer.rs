@@ -33,7 +33,8 @@ impl FileWriter {
     }
 
     pub fn write(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = std::fs::File::create(self.file_path.as_str()).expect("create failed");
+        let mut file = std::fs::File::create(self.file_path.as_str())
+            .expect(format!("create failed: {}", &self.file_path).as_str());
         file.set_len(self.file_size).expect("resize download file failed");
         let mut now = SystemTime::now();
         let start = SystemTime::now();

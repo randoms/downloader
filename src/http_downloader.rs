@@ -1,35 +1,9 @@
 mod utils;
 use utils::get_data_from_header;
 use log::{info};
-use std::io::Read;
+use std::{io::Read, time::Duration};
 
-// use options::DownloadOptions;
 
-// struct HttpDownloader {
-//     options: DownloadOptions,
-// }
-
-// impl HttpDownloader {
-//     fn new(options:DownloadOptions) -> {
-//         HttpDownloader {
-//             options: options,
-//         }
-//     }
-
-//     fn start() -> Result<String, String>{
-        
-//     }
-
-//     fn cancel() -> Result<String, String>{
-
-//     }
-// }
-
-// struct DownloadTask {
-//     source: String,
-//     chunk_size: u64,
-
-// }
 #[derive(Debug)]
 pub struct WebFile {
     source: String, // 源文件网络地址
@@ -41,8 +15,11 @@ pub struct WebFile {
 
 impl WebFile {
     pub fn new(source:&str) -> Result<WebFile, Box<dyn std::error::Error>>{
-        let response = reqwest::blocking::Client::new().get(source)
-        .send()?;
+        let client = reqwest::blocking::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36 Edg/88.0.705.53")
+            .build()?;
+        let response = client.get(source).send()?;
         let filesize = response.content_length().unwrap_or_default();
         let mut webfile = WebFile {
             source: String::from(source),
@@ -72,6 +49,7 @@ impl WebFile {
                 path = &final_url["http://".len() .. final_url.len()];
             }
             webfile.filename = std::path::Path::new(path).file_name().unwrap().to_str().unwrap().to_owned();
+            webfile.filename = webfile.filename.split('?').next().unwrap().to_string();
         }
         Ok(webfile)
     }
@@ -146,9 +124,13 @@ impl FileChunk {
     }
 
     pub fn download(&mut self) -> Result<&Vec<u8>, Box<dyn std::error::Error>> {
-        let mut res = reqwest::blocking::Client::new().get(self.source.as_str())
-            .timeout(std::time::Duration::from_secs(5))
-            .header("range", format!("bytes={}-{}", self.download_index, self.download_index + self.size))
+        let client = reqwest::blocking::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36 Edg/88.0.705.53")
+            .build()?;
+        let mut res = client.get(self.source.as_str())
+            .timeout(Duration::from_secs(60))
+            .header("range", format!("bytes={}-{}", self.download_index + (self.cache.len() as u64), self.download_index + self.size))
             .send()?;
         let mut buf = [0; 1024];
         while let Ok(n) = res.read(&mut buf) {
